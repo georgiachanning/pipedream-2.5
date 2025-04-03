@@ -6,6 +6,7 @@ import itertools
 import time
 import torch
 import torch.distributed as dist
+from torch.utils.checkpoint import checkpoint
 
 import communication
 import runtime_utilities
@@ -303,19 +304,6 @@ class StageRuntime:
             parameter_iterators.append(module.parameters())
         return itertools.chain(*parameter_iterators)
 
-    def stash_parameters(self):
-        """Clone and detach parameters immediately after forward pass."""
-        self._stashed_params = [
-            param.clone().detach() for param in self.parameters()
-        ]
-
-    def load_stashed_parameters(self):
-        """Reload stashed parameters into model before backward pass."""
-        with torch.no_grad():
-            for param, stashed_param in zip(self.parameters(), self._stashed_params):
-                param.copy_(stashed_param)
-
-
     def state_dict(self):
         state_dict = collections.OrderedDict()
         for i, module in enumerate(self.modules_with_dependencies.modules()):
@@ -508,9 +496,6 @@ class StageRuntime:
         # Run forward pass.
         self._run_forward(tensors)
 
-        # Stash parameters
-        self.stash_parameters()
-
         # Send tensors forward.
         self.send_tensors_forward()
         if self.verbose_freq > 0 and self.forward_minibatch_id % self.verbose_freq == 0:
@@ -523,7 +508,6 @@ class StageRuntime:
         # has modules in topological order).
         modules = self.modules_with_dependencies.modules()
         all_input_names = self.modules_with_dependencies.all_input_names()
-        print(all_input_names)
         all_output_names = self.modules_with_dependencies.all_output_names()
         for i, (module, input_names, output_names) in \
                 enumerate(zip(modules, all_input_names, all_output_names)):
@@ -543,8 +527,16 @@ class StageRuntime:
                     module_outputs = [sum(module_outputs)]
             else:
                 # If layer is non-criterion.
-                module_outputs = module(*[tensors[input_name]
-                                          for input_name in input_names])
+                # module_outputs = module(*[tensors[input_name] for input_name in input_names])
+                inputs = [tensors[input_name] for input_name in input_names]
+
+                if self.enable_recompute and any(inp.requires_grad for inp in inputs):
+                    def forward_fn(*args):
+                        return module(*args)
+                    module_outputs = checkpoint(forward_fn, *inputs)
+                else:
+                    module_outputs = module(*inputs)
+
                 if not isinstance(module_outputs, tuple):
                     module_outputs = (module_outputs,)
                 module_outputs = list(module_outputs)
@@ -566,9 +558,6 @@ class StageRuntime:
         # Receive input gradients needed for backward pass.
         self.receive_tensors_backward()
 
-        # Load stashed gradients
-        self.load_stashed_parameters()
-        
         # Backward pass through modules in reverse order.
         inputs = {}
         outputs = {}
