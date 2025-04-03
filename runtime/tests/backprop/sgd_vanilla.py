@@ -2,6 +2,8 @@
 # Licensed under the MIT license.
 
 import torch
+torch.autograd.set_detect_anomaly(True)
+
 
 # N is batch size; D_in is input dimension;
 # D_out is output dimension.

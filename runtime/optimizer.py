@@ -156,7 +156,7 @@ class OptimizerWithWeightStashing(torch.optim.Optimizer):
         self.latest_version = self.latest_version.incr()
         if self.num_versions > 1:
             self.buffered_state_dicts = self.queue[0][0]
-            self.queue.append(self.get_params(clone=False))
+            self.queue.append(self.get_params(clone=True))
 
         if log_timing:
             print("Optimizer step took: %.3f" % (time.time() - start_time))

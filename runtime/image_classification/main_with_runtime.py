@@ -11,6 +11,7 @@ import sys
 import time
 
 import torch
+torch.autograd.set_detect_anomaly(True)
 from torch.autograd import Variable
 import torch.nn as nn
 import torch.nn.parallel
@@ -27,7 +28,7 @@ import runtime
 import sgd
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('--data_dir', type=str,
+parser.add_argument('--data_dir', type=str, 
                     help='path to dataset')
 parser.add_argument('--distributed_backend', type=str,
                     help='distributed backend to use (gloo|nccl)')
@@ -135,9 +136,9 @@ def main():
         input_size = [args.batch_size, 3, 299, 299]
     else:
         input_size = [args.batch_size, 3, 224, 224]
-    training_tensor_shapes = {"input0": input_size, "target": [args.batch_size]}
+    training_tensor_shapes = {"input0": input_size, "target": [args.batch_size]} 
     dtypes = {"input0": torch.int64, "target": torch.int64}
-    inputs_module_destinations = {"input": 0}
+    inputs_module_destinations = {"input": 0} 
     target_tensor_names = {"target"}
     for (stage, inputs, outputs) in model[:-1]:  # Skip last layer (loss).
         input_tensors = []
@@ -575,7 +576,8 @@ def accuracy(output, target, topk=(1,)):
 
         res = []
         for k in topk:
-            correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
+            # correct_k = correct[:k].view(-1).float().sum(0, keepdim=True) changed
+            correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
 
