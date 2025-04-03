@@ -394,13 +394,13 @@ def train(train_loader, r, optimizer, epoch):
                        epoch_time=epoch_time, full_epoch_time=full_epoch_time,
                        loss=losses, top1=top1, top5=top5,
                        memory=(float(torch.cuda.memory_allocated()) / 10**9),
-                       cached_memory=(float(torch.cuda.memory_cached()) / 10**9)))
+                       cached_memory=(float(torch.cuda.memory_reserved()) / 10**9)))
                 import sys; sys.stdout.flush()
         else:
             if i % args.print_freq == 0:
                 print('Epoch: [{0}][{1}/{2}]\tMemory: {memory:.3f} ({cached_memory:.3f})'.format(
                        epoch, i, n, memory=(float(torch.cuda.memory_allocated()) / 10**9),
-                       cached_memory=(float(torch.cuda.memory_cached()) / 10**9)))
+                       cached_memory=(float(torch.cuda.memory_reserved()) / 10**9)))
                 import sys; sys.stdout.flush()
 
         # perform backward pass
@@ -486,7 +486,7 @@ def validate(val_loader, r, epoch):
                            epoch, i, n, batch_time=batch_time, loss=losses,
                            top1=top1, top5=top5,
                            memory=(float(torch.cuda.memory_allocated()) / 10**9),
-                           cached_memory=(float(torch.cuda.memory_cached()) / 10**9)))
+                           cached_memory=(float(torch.cuda.memory_reserved()) / 10**9)))
                     import sys; sys.stdout.flush()
 
         if is_last_stage():
