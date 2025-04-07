@@ -1,0 +1,14 @@
+num_stages: 4
+model_type: nanoGPT
+microbatch_size: 4
+gpus_per_node: 4
+nodes: 1
+pipeline: [
+  [GPTStage0],
+  [GPTBlock0, GPTBlock1, GPTBlock2],
+  [GPTBlock3, GPTBlock4, GPTBlock5],
+  [GPTBlock6, GPTBlock7, GPTBlock8],
+  [GPTBlock9, GPTBlock10, GPTFinal]
+]
+
+## this is 4 gpus/stages + 12 blocks
