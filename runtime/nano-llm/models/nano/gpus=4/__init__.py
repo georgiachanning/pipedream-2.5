@@ -1,3 +1,21 @@
+
+from .stage0 import stage0
+from .stage1 import stage1
+from .stage2 import stage2
+from .stage3 import stage3
+from .stage4 import stage4
+
+def arch():
+    return "nanoGPT"
+
+def model(criterion):
+    # You can ignore the passed-in criterion here if your loss stage takes care of it,
+    # or alternatively you might pass it to stage4 if you want to override the default.
+    stages = [stage0(), stage1(), stage2(), stage3(), stage4()]
+    return stages
+
+
+"""
 import torch
 import torch.nn as nn
 import os
@@ -70,3 +88,4 @@ def model(criterion):
 
 
     return stages
+"""

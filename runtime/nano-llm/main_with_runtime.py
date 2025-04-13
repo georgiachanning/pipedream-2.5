@@ -123,14 +123,17 @@ def main():
     # input and target are both token IDs with shape (batch_size, block_size)
     block_size = 1024  # or whatever you use
     input_size = [args.batch_size, block_size]
+
     training_tensor_shapes = {
         "input0": input_size,
         "target": input_size
     }
 
-    training_tensor_shapes = {"input0": input_size, "target": [args.batch_size]} 
-    dtypes = {"input0": torch.int64, "target": torch.int64}
-    inputs_module_destinations = {"input": 0} 
+    # training_tensor_shapes = {"input0": input_size, "target": [args.batch_size]} 
+    dtypes = {"input0": torch.int64, 
+              "target": torch.int64}
+
+    inputs_module_destinations = {"input0": 0, "target":4} # changed to input0 from input and added target
     target_tensor_names = {"target"}
     for (stage, inputs, outputs) in model[:-1]:  # Skip last layer (loss).
         input_tensors = []
