@@ -535,8 +535,30 @@ def adjust_learning_rate(optimizer, epoch, total_epochs, r, lr_policy, step, epo
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
-
 def accuracy(output, target, topk=(1,)):
+    """Computes the precision@k for language modeling by flattening batch and seq dimensions."""
+    with torch.no_grad():
+        # output: [B, T, vocab_size]
+        B, T, V = output.size()
+        # flatten batch and sequence dimensions
+        output = output.reshape(B * T, V)  # [B*T, vocab_size]
+        target = target.reshape(B * T)     # [B*T]
+
+        maxk = max(topk)
+        # Get the topk predictions for each element in the flattened output
+        _, pred = output.topk(maxk, dim=1, largest=True, sorted=True)  # pred: [B*T, maxk]
+        pred = pred.t()  # Now shape is [maxk, B*T]
+        # Expand target to match the shape of pred for comparison
+        correct = pred.eq(target.view(1, -1).expand_as(pred))
+
+        res = []
+        for k in topk:
+            # Compute the number of correct predictions for top k
+            correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
+            res.append(correct_k.mul_(100.0 / (B * T)))
+        return res
+
+'''def accuracy(output, target, topk=(1,)):
     """Computes the precision@k for the specified values of k"""
     with torch.no_grad():
         maxk = max(topk)
@@ -551,7 +573,7 @@ def accuracy(output, target, topk=(1,)):
             # correct_k = correct[:k].view(-1).float().sum(0, keepdim=True) changed
             correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
             res.append(correct_k.mul_(100.0 / batch_size))
-        return res
+        return res'''
 
 
 if __name__ == '__main__':

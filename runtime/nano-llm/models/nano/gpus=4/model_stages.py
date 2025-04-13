@@ -48,10 +48,10 @@ class GPTLossWrapper(nn.Module):
 
     def forward(self, logits, targets):
         # Sanity checks (will crash fast if wrong)
-        print(f"[LOSS] logits dtype: {logits.dtype}, shape: {logits.shape}")
-        print(f"[LOSS] targets dtype: {targets.dtype}, shape: {targets.shape}")
-        print(f"[LOSS] logits sample: {logits.view(-1)[:5]}")
-        print(f"[LOSS] targets sample: {targets.view(-1)[:5]}")
+        # print(f"[LOSS] logits dtype: {logits.dtype}, shape: {logits.shape}")
+        # print(f"[LOSS] targets dtype: {targets.dtype}, shape: {targets.shape}")
+        # print(f"[LOSS] logits sample: {logits.view(-1)[:5]}")
+        # print(f"[LOSS] targets sample: {targets.view(-1)[:5]}")
         assert logits.dtype in (torch.float16, torch.float32, torch.bfloat16), f"logits dtype was {logits.dtype}, expected float"
         assert targets.dtype == torch.long, f"targets dtype was {targets.dtype}, expected long"
 
