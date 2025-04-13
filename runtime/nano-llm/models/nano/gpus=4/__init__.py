@@ -58,7 +58,7 @@ def model(criterion):
             *[GPTBlockWrapper(config) for _ in range(3)],
             GPTFinal(config)
         ),
-        ["hidden9"], ["output"]
+        ["hidden9"], ["logits"]
     ))
 
     # Final stage adds loss
@@ -66,7 +66,7 @@ def model(criterion):
 
     # Stage 4
     loss_module = GPTLossWrapper(nn.CrossEntropyLoss())
-    stages.append((loss_module, ["output", "target"], ["loss"]))
+    stages.append((loss_module, ["logits", "target"], ["loss"]))
 
 
     return stages
