@@ -26,6 +26,8 @@ from shakespeare_wrapper import ShakespeareDataset
 
 sys.path.append("..")
 sys.path.append("/homes/cdt24/cgeorgia/projects/opt/pipe-nanoGPT")
+import adam
+import nadam
 import runtime
 import sgd
 
@@ -95,6 +97,9 @@ parser.add_argument('--recompute', action='store_true',
 # by not applying updates every minibatch.
 parser.add_argument('--macrobatch', action='store_true',
                     help='Macrobatch updates to save memory')
+# Adding functionality to let you choose optimizer
+parser.add_argument('--optimizer_key', default='default', choices=['adam', 'nadam', 'default']
+                    help='Choices are "adam", "nadam", or "default", which will give you vanilla SGD.')
 
 best_prec1 = 0
 
@@ -215,14 +220,37 @@ def main():
         print("=> loaded checkpoint '{}' (epoch {})"
                 .format(checkpoint_file_path, checkpoint['epoch']))
 
-    optimizer = sgd.SGDWithWeightStashing(r.modules(), r.master_parameters,
-                                          r.model_parameters, args.loss_scale,
-                                          num_versions=num_versions,
-                                          lr=args.lr,
-                                          momentum=args.momentum,
-                                          weight_decay=args.weight_decay,
-                                          verbose_freq=args.verbose_frequency,
-                                          macrobatch=args.macrobatch)
+    
+    if args.optimizer_key == 'adam':
+        optimizer = adam.AdamWithWeightStashing(
+                        modules=r.modules(), master_parameters=r.master_parameters,
+                        model_parameters=r.model_parameters, loss_scale=args.loss_scale,
+                        num_versions=num_versions, 
+                        lr=args.lr, 
+                        betas=(0.9,0.999),
+                        weight_decay=args.weight_decay, 
+                        verbose_freq=args.verbose_frequency,
+                        macrobatch=args.macrobatch)
+    elif args.optimizer_key == 'nadam':
+        optimizer = nadam.NAdamWithWeightStashing(
+                        modules=r.modules(), master_parameters=r.master_parameters,
+                        model_parameters=r.model_parameters, loss_scale=args.loss_scale,
+                        num_versions=num_versions, 
+                        lr=args.lr, 
+                        betas=(0.9,0.999),
+                        weight_decay=args.weight_decay, 
+                        verbose_freq=args.verbose_frequency,
+                        macrobatch=args.macrobatch,
+                        eps=1e-08, momentum_decay=0.004)
+    else:
+        optimizer = sgd.SGDWithWeightStashing(r.modules(), r.master_parameters,
+                        r.model_parameters, args.loss_scale,
+                        num_versions=num_versions,
+                        lr=args.lr,
+                        momentum=args.momentum,
+                        weight_decay=args.weight_decay,
+                        verbose_freq=args.verbose_frequency,
+                        macrobatch=args.macrobatch)
 
     if args.resume:
         optimizer.load_state_dict(checkpoint['optimizer'])

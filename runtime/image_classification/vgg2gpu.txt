@@ -1,0 +1,2 @@
+Epoch: 0 Step 0 	Learning rate: 0.100000
+Epoch: [0][0/390]	Time: 3.386 (3.386)	Epoch time [hr]: 0.001 (0.367)	Memory: 11.393 (11.444)	Loss: 6.9073 (6.9073)	Prec@1: 0.000 (0.000)	Prec@5: 2.344 (2.344)
