@@ -32,7 +32,7 @@ import runtime
 import sgd
 from shakespeare_wrapper import ShakespeareDataset
 
-parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
+parser = argparse.ArgumentParser(description='Pipedream nano-GPT Training')
 parser.add_argument('--data_dir', type=str, 
                     help='path to dataset')
 parser.add_argument('--distributed_backend', type=str,
@@ -120,10 +120,10 @@ def main():
     global args, best_prec1
     args = parser.parse_args()
 
-    dist.init_process_group(backend=args.distributed_backend)
-    rank = dist.get_rank()
-    world_size = dist.get_world_size()
-    if args.wandb and rank == 0:
+    # dist.init_process_group(backend=args.distributed_backend)
+    # rank = dist.get_rank()
+    # world_size = dist.get_world_size()
+    if args.wandb and args.rank == 0:
         # only init on rank 0 so you don’t double‑log summaries
         wandb.init(
             project=args.wandb_project,
@@ -414,6 +414,21 @@ def train(train_loader, r, optimizer, epoch):
                        loss=losses, top1=top1, top5=top5,
                        memory=(float(torch.cuda.memory_allocated()) / 10**9),
                        cached_memory=(float(torch.cuda.memory_reserved()) / 10**9)))
+
+                if args.wandb and args.rank == 0:
+                    wandb.log({
+                        'val/loss': loss.val,
+                        'val/prec@1': top1.val,
+                        'val/prec@5': top5.val,
+                        'avg/loss': loss.avg,
+                        'avg/prec@1': top1.avg,
+                        'avg/prec@5': top5.avg,
+                        'epoch': epoch,
+                        'memory': float(torch.cuda.memory_allocated()) / 10**9,
+                        'epoch_time':epoch_time,
+                        'batch_time':batch_time
+                    })
+
                 import sys; sys.stdout.flush()
         else:
             if i % args.print_freq == 0:
@@ -421,6 +436,7 @@ def train(train_loader, r, optimizer, epoch):
                        epoch, i, n, memory=(float(torch.cuda.memory_allocated()) / 10**9),
                        cached_memory=(float(torch.cuda.memory_reserved()) / 10**9)))
                 import sys; sys.stdout.flush()
+
 
         # perform backward pass
         if args.fp16:

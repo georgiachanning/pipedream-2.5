@@ -15,6 +15,8 @@ MACHINES            = 'machines'
 MODEL_TYPE          = 'model_type'
 DISTRIBUTED_BACKEND = 'distributed_backend'
 CONFIG_FILE         = 'config_file'
+# optional: let your YAML override the port
+MASTER_PORT_KEY     = 'master_port'
 
 # generate one group ID for all W&B runs
 GROUP_ID = uuid.uuid4().hex
@@ -46,6 +48,10 @@ if __name__ == "__main__":
         ip, gpu = m.split(':')
         workers.append(WorkerInfo(ip, gpu))
 
+    num_ranks = len(workers)
+    master_addr = workers[0].ip
+    master_port = cfg.get(MASTER_PORT_KEY, 29500)
+
     # make a timestamped log directory
     output_dir = os.path.join(cfg[LOG_DIR],
                               datetime.datetime.now().isoformat())
@@ -61,6 +67,7 @@ if __name__ == "__main__":
         f'--module={cfg[MODULE]}',
         f'--distributed_backend={cfg[DISTRIBUTED_BACKEND]}',
         f'--config_path={cfg[CONFIG_FILE]}',
+        f'--master_addr={master_addr}',
     ]
 
     # optional flags: YAML key -> CLI flag
@@ -99,19 +106,25 @@ if __name__ == "__main__":
     if args.resume:
         base_cmd.append(f"--resume={args.resume}")
 
-    num_ranks = len(workers)
-
     # launch one worker per GPU
     for rank, w in enumerate(workers):
-        # give each its own run ID
-        os.environ['WANDB_RUN_GROUP'] = GROUP_ID
-        os.environ['WANDB_RUN_ID']    = f"{GROUP_ID}-{rank}"
+        env_prefix = " ".join([
+            # f"CUDA_VISIBLE_DEVICES={w.gpu_id}",
+            f"MASTER_ADDR={master_addr}",
+            f"MASTER_PORT={master_port}",
+            f"WORLD_SIZE={num_ranks}",
+            f"RANK={rank}",
+            f"LOCAL_RANK={rank % num_ranks}",
+            f"WANDB_RUN_GROUP={GROUP_ID}",
+            f"WANDB_RUN_ID={GROUP_ID}-{rank}"
+        ])
 
         cmd = base_cmd.copy()
         cmd.append(f"--rank={rank}")
         cmd.append(f"--local_rank={rank % num_ranks}")
 
-        cmd_str = " ".join(cmd) + f" 2>&1 | tee {output_dir}/worker{rank}.log"
+        cmd_str = f"{env_prefix} " + " ".join(cmd) + \
+                  f" 2>&1 | tee {output_dir}/worker{rank}.log"
 
         if w.ip not in ('localhost', '127.0.0.1'):
             launch = f'ssh -n {w.ip} "{cmd_str}"'
