@@ -9,6 +9,7 @@ import os
 import shutil
 import sys
 import time
+import wandb
 
 import torch
 torch.autograd.set_detect_anomaly(True)
@@ -22,7 +23,6 @@ import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-from shakespeare_wrapper import ShakespeareDataset
 
 sys.path.append("..")
 sys.path.append("/homes/cdt24/cgeorgia/projects/opt/pipe-nanoGPT")
@@ -30,6 +30,7 @@ import adam
 import nadam
 import runtime
 import sgd
+from shakespeare_wrapper import ShakespeareDataset
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--data_dir', type=str, 
@@ -98,8 +99,12 @@ parser.add_argument('--recompute', action='store_true',
 parser.add_argument('--macrobatch', action='store_true',
                     help='Macrobatch updates to save memory')
 # Adding functionality to let you choose optimizer
-parser.add_argument('--optimizer_key', default='default', choices=['adam', 'nadam', 'default']
+parser.add_argument('--optimizer_key', default='default', choices=['adam', 'nadam', 'default'],
                     help='Choices are "adam", "nadam", or "default", which will give you vanilla SGD.')
+# Adding w&b tracking
+parser.add_argument('--wandb', action='store_true', help='enable WandB logging', default=True)
+parser.add_argument('--wandb_project', type=str, default='opt')
+parser.add_argument('--wandb_entity', type=str, default='georgia-channing-university-of-oxford')
 
 best_prec1 = 0
 

@@ -1,6 +1,6 @@
 import torch.nn as nn
 from .model_stages import GPTEmbedding, GPTBlockWrapper  # adjust relative import if needed
-from .config import get_gpt_config
+from .gpt_config import get_gpt_config
 
 def stage0():
     config = get_gpt_config()

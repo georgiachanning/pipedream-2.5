@@ -1,0 +1,23 @@
+'log_directory': '/homes/cdt24/cgeorgia/projects/opt/pipedream-2.5/runtime/nano-llm/output/4gpu-default/'
+'module': 'models.nano.gpus=4'
+'data_dir': '/homes/cdt24/cgeorgia/projects/opt/pipe-nanoGPT/data/shakespeare_char'
+'config_file': '/homes/cdt24/cgeorgia/projects/opt/pipedream-2.5/runtime/nano-llm/models/nano/gpus=4/hybrid_conf.json'
+'container': null
+'machines': ['localhost:0', 'localhost:1', 'localhost:2', 'localhost:3']
+'batch_size': 256
+'learning_rate': 0.01
+'weight_decay': 0.0005
+'epochs': 60
+'print_frequency': 100
+'verbose_frequency': 100
+'compress_activations': False
+'compress_in_gpu': False
+'learning_rate_policy': 'polynomial'
+'model_type': 'nano-llm'
+'synthetic_data': True
+'distributed_backend': 'gloo'
+'optimizer_key': 'default'
+'verbose_frequency': 100
+'wandb': True
+'wandb_project': 'opt'
+'wandb_entity': 'georgia-channing-university-of-oxford'

@@ -20,6 +20,7 @@ MODEL_TYPE = 'model_type'
 
 # Model types.
 IMAGE_CLASSIFICATION = 'image_classification'
+NANO_LLM = 'nano-llm'
 TRANSLATION = 'translation'
 SPEECH_TO_TEXT = 'speech_to_text'
 
@@ -76,8 +77,8 @@ if __name__ == "__main__":
                         help="Path to configuration file")
     parser.add_argument('--resume', default='', type=str, metavar='PATH',
                         help='path to latest checkpoint (default: none)')
-    parser.add_argument('--launch_single_container', action='store_true',
-                        help='launch a single container per machine')
+    parser.add_argument('--launch_single_container', action='store_true', default=False,
+                        help='launch a single container per machine') # added default False
     parser.add_argument('--mount_directories', type=str, nargs='+',
                         help='list of directories to mount')
     parser.add_argument('--quiet', action='store_true',
@@ -88,7 +89,8 @@ if __name__ == "__main__":
     assert os.path.isfile(args.config_file), args.config_file
 
     with open(args.config_file, 'r') as stream:
-        configurations = yaml.load(stream=stream)
+        configurations = yaml.load(stream=stream, Loader=yaml.SafeLoader)
+        # configurations = yaml.load(stream=stream)
 
     # Check that necessary fields are filled out in the configuration file.
     assert LOG_DIR in configurations
@@ -108,6 +110,10 @@ if __name__ == "__main__":
         python_path = 'python'
     elif configurations[MODEL_TYPE] == IMAGE_CLASSIFICATION:
         main_with_runtime_folder = 'image_classification'
+        disable_gpu_gpu_communication = False
+        python_path = 'python'
+    elif configurations[MODEL_TYPE] == NANO_LLM:
+        main_with_runtime_folder = 'nano-llm'
         disable_gpu_gpu_communication = False
         python_path = 'python'
     elif configurations[MODEL_TYPE] == SPEECH_TO_TEXT:

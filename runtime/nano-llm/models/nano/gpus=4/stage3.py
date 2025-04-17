@@ -1,6 +1,6 @@
 import torch.nn as nn
 from .model_stages import GPTBlockWrapper, GPTFinal
-from .config import get_gpt_config
+from .gpt_config import get_gpt_config
 
 def stage3():
     config = get_gpt_config()
