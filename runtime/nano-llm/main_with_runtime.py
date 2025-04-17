@@ -102,7 +102,7 @@ parser.add_argument('--macrobatch', action='store_true',
 parser.add_argument('--optimizer_key', default='default', choices=['adam', 'nadam', 'default'],
                     help='Choices are "adam", "nadam", or "default", which will give you vanilla SGD.')
 # Adding w&b tracking
-parser.add_argument('--wandb', action='store_true', help='enable WandB logging', default=True)
+parser.add_argument('--wandb', action='store_true', help='enable WandB logging')
 parser.add_argument('--wandb_project', type=str, default='opt')
 parser.add_argument('--wandb_entity', type=str, default='georgia-channing-university-of-oxford')
 
@@ -119,6 +119,20 @@ def is_last_stage():
 def main():
     global args, best_prec1
     args = parser.parse_args()
+
+    dist.init_process_group(backend=args.distributed_backend)
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
+    if args.wandb and rank == 0:
+        # only init on rank 0 so you don’t double‑log summaries
+        wandb.init(
+            project=args.wandb_project,
+            entity=args.wandb_entity,
+            config=vars(args),
+            id=os.environ.get('WANDB_RUN_ID'),       # unique per worker
+            group=os.environ.get('WANDB_RUN_GROUP'), # same for all workers
+            save_code=True
+        )
 
     torch.cuda.set_device(args.local_rank)
 
