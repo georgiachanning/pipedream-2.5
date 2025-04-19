@@ -7,6 +7,7 @@ import time
 import torch
 import torch.distributed as dist
 from torch.utils.checkpoint import checkpoint
+torch.autograd.set_detect_anomaly(True)
 
 import communication
 import runtime_utilities
@@ -579,6 +580,7 @@ class StageRuntime:
                 all_output_names_set.add(output_name)
 
         tensors = self.tensors.pop(0)
+        self._run_forward(tensors)
         # Set inputs, outputs, and output_gradients.
         # Only set outputs/output_gradients for tensors that are not inputs of
         # other modules in this stage.

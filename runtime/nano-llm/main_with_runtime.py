@@ -120,20 +120,6 @@ def main():
     global args, best_prec1
     args = parser.parse_args()
 
-    # dist.init_process_group(backend=args.distributed_backend)
-    # rank = dist.get_rank()
-    # world_size = dist.get_world_size()
-    if args.wandb and args.rank == 0:
-        # only init on rank 0 so you don’t double‑log summaries
-        wandb.init(
-            project=args.wandb_project,
-            entity=args.wandb_entity,
-            config=vars(args),
-            id=os.environ.get('WANDB_RUN_ID'),       # unique per worker
-            group=os.environ.get('WANDB_RUN_GROUP'), # same for all workers
-            save_code=True
-        )
-
     torch.cuda.set_device(args.local_rank)
 
     # define loss function (criterion)
@@ -210,6 +196,11 @@ def main():
         model_type=runtime.IMAGE_CLASSIFICATION,
         enable_recompute=args.recompute)
 
+    all_modules = r.modules()
+    print(f"PipeDream loaded {len(all_modules)} modules:")
+    for i, m in enumerate(all_modules):
+        print(f"  [{i:>2}] {m.__class__.__name__}")
+
     # stage needed to determine if current stage is the first stage
     # num_stages needed to determine if current stage is the last stage
     # num_ranks needed to determine number of warmup_minibatches in case of pipelining
@@ -226,6 +217,16 @@ def main():
         # number of versions is the total number of machines following the current
         # stage, shared amongst all replicas in this stage
         num_versions = r.num_warmup_minibatches + 1
+
+    if args.wandb and is_last_stage():
+        wandb.init(
+            project=args.wandb_project,
+            entity=args.wandb_entity,
+            config=vars(args),
+            id=os.environ.get('WANDB_RUN_ID'),       # unique per worker
+            group=os.environ.get('WANDB_RUN_GROUP'), # same for all workers
+            save_code=True
+        )
 
     # if specified, resume from checkpoint
     if args.resume:
@@ -415,18 +416,19 @@ def train(train_loader, r, optimizer, epoch):
                        memory=(float(torch.cuda.memory_allocated()) / 10**9),
                        cached_memory=(float(torch.cuda.memory_reserved()) / 10**9)))
 
-                if args.wandb and args.rank == 0:
+                if args.wandb:
                     wandb.log({
-                        'val/loss': loss.val,
+                        'val/loss': losses.val,
                         'val/prec@1': top1.val,
                         'val/prec@5': top5.val,
-                        'avg/loss': loss.avg,
+                        'val/batch_time':batch_time.val,
+                        'avg/loss': losses.avg,
                         'avg/prec@1': top1.avg,
                         'avg/prec@5': top5.avg,
+                        'avg/batch_time':batch_time.avg,
                         'epoch': epoch,
                         'memory': float(torch.cuda.memory_allocated()) / 10**9,
-                        'epoch_time':epoch_time,
-                        'batch_time':batch_time
+                        'epoch_time':epoch_time
                     })
 
                 import sys; sys.stdout.flush()

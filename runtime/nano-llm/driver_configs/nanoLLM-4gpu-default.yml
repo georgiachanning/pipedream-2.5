@@ -4,12 +4,11 @@
 'config_file': '/homes/cdt24/cgeorgia/projects/opt/pipedream-2.5/runtime/nano-llm/models/nano/gpus=4/hybrid_conf.json'
 'container': null
 'machines': ['localhost:0', 'localhost:1', 'localhost:2', 'localhost:3']
-'batch_size': 256
+'batch_size': 16
 'learning_rate': 0.01
 'weight_decay': 0.0005
 'epochs': 60
 'print_frequency': 100
-'verbose_frequency': 100
 'compress_activations': False
 'compress_in_gpu': False
 'learning_rate_policy': 'polynomial'
