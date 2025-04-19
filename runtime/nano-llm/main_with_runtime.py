@@ -10,6 +10,7 @@ import shutil
 import sys
 import time
 import wandb
+import math
 
 import torch
 torch.autograd.set_detect_anomaly(True)
@@ -23,10 +24,12 @@ import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
+from torch.nn.utils import clip_grad_norm_
 
 sys.path.append("..")
 sys.path.append("/homes/cdt24/cgeorgia/projects/opt/pipe-nanoGPT")
 import adam
+import adamw
 import nadam
 import runtime
 import sgd
@@ -59,6 +62,12 @@ parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
 parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
                     metavar='W', help='weight decay (default: 1e-4)')
+parser.add_argument('--grad_clip', '--gc', default=0.0, type=float,
+                    help='grad_clip default 0.0')
+parser.add_argument('--warmup_iters', type=int, default=100,
+                    help='number of steps for linear warmup')
+parser.add_argument('--min_lr', type=float, default=None,
+                    help='minimum LR after cosine decay (default: base_lr/10)')
 parser.add_argument('--print-freq', '-p', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')
 parser.add_argument('--fp16', action='store_true',
@@ -99,7 +108,7 @@ parser.add_argument('--recompute', action='store_true',
 parser.add_argument('--macrobatch', action='store_true',
                     help='Macrobatch updates to save memory')
 # Adding functionality to let you choose optimizer
-parser.add_argument('--optimizer_key', default='default', choices=['adam', 'nadam', 'default'],
+parser.add_argument('--optimizer_key', default='default', choices=['adam', 'adamw','nadam', 'default'],
                     help='Choices are "adam", "nadam", or "default", which will give you vanilla SGD.')
 # Adding w&b tracking
 parser.add_argument('--wandb', action='store_true', help='enable WandB logging')
@@ -131,7 +140,7 @@ def main():
     model = module.model(criterion)
 
     # input and target are both token IDs with shape (batch_size, block_size)
-    block_size = 1024  # or whatever you use
+    block_size = 256 # or whatever you use
     input_size = [args.batch_size, block_size]
 
     training_tensor_shapes = {
@@ -207,8 +216,10 @@ def main():
     args.stage = r.stage
     args.num_stages = r.num_stages
     args.num_ranks = r.num_ranks
-    if not is_first_stage():
-        args.synthetic_data = True
+
+    # commented this out to see if preventing learning
+    '''if not is_first_stage():
+        args.synthetic_data = True'''
     
     # define optimizer
     if args.no_input_pipelining:
@@ -247,7 +258,18 @@ def main():
                         model_parameters=r.model_parameters, loss_scale=args.loss_scale,
                         num_versions=num_versions, 
                         lr=args.lr, 
-                        betas=(0.9,0.999),
+                        betas=(0.9,0.99),
+                        weight_decay=args.weight_decay, 
+                        verbose_freq=args.verbose_frequency,
+                        macrobatch=args.macrobatch)
+
+    if args.optimizer_key == 'adamw':
+        optimizer = adamw.AdamWWithWeightStashing(
+                        modules=r.modules(), master_parameters=r.master_parameters,
+                        model_parameters=r.model_parameters, loss_scale=args.loss_scale,
+                        num_versions=num_versions, 
+                        lr=args.lr, 
+                        betas=(0.9,0.99),
                         weight_decay=args.weight_decay, 
                         verbose_freq=args.verbose_frequency,
                         macrobatch=args.macrobatch)
@@ -281,7 +303,6 @@ def main():
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
-    block_size = 1024  # match model config
     data_path = os.path.join(args.data_dir)  # should contain train.bin, val.bin
 
     train_dataset = ShakespeareDataset(data_path, block_size=block_size, split='train')
@@ -373,6 +394,8 @@ def train(train_loader, r, optimizer, epoch):
     else:
         num_warmup_minibatches = r.num_warmup_minibatches
 
+    num_warmup_minibatches = args.warmup_iters
+
     if args.verbose_frequency > 0:
         print("Letting in %d warm-up minibatches" % num_warmup_minibatches)
         print("Running training for %d minibatches" % n)
@@ -385,7 +408,7 @@ def train(train_loader, r, optimizer, epoch):
         # perform forward pass
         r.run_forward()
 
-        # Adjust learning rate
+        # Adjust learning 
         adjust_learning_rate(optimizer, epoch, args.epochs, r, args.lr_policy, i, n)
 
         if is_last_stage():
@@ -448,6 +471,10 @@ def train(train_loader, r, optimizer, epoch):
         optimizer.load_old_params()
         r.run_backward()
         optimizer.load_new_params()
+
+        if args.grad_clip != 0.0:
+            clip_grad_norm_(r.model_parameters, args.grad_clip)
+
         optimizer.step()
 
     # finish remaining backward passes
@@ -456,6 +483,10 @@ def train(train_loader, r, optimizer, epoch):
         optimizer.load_old_params()
         r.run_backward()
         optimizer.load_new_params()
+
+        if args.grad_clip != 0.0:
+            clip_grad_norm_(r.model_parameters, args.grad_clip)
+            
         optimizer.step()
 
     # wait for all helper threads to complete
@@ -566,8 +597,66 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count
 
+def adjust_learning_rate(optimizer, epoch, total_epochs, r,
+                         lr_policy, step, epoch_length):
+    """
+    Adjusts learning rate based on stage, epoch, and policy.
 
-def adjust_learning_rate(optimizer, epoch, total_epochs, r, lr_policy, step, epoch_length):
+    Supported LR policies:
+         - step
+         - polynomial
+         - exponential_decay
+         - cosine
+    """
+
+    # 1) base LR (already stage‑adjusted)
+    base_lr = r.get_adjusted_learning_rate(base_lr=args.lr)
+
+    # 2) global step / total steps
+    current_step = epoch * epoch_length + step
+    max_steps    = total_epochs * epoch_length
+
+    # 3) warm‑up
+    warmup_steps = getattr(args, "warmup_iters", 0)
+    if warmup_steps > 0 and current_step < warmup_steps:
+        lr = base_lr * float(current_step + 1) / float(warmup_steps)
+    else:
+        # 4) post‑warmup decay
+        if lr_policy == "step":
+            lr = base_lr * (0.1 ** (epoch // 30))
+
+        elif lr_policy == "polynomial":
+            power = 2.0
+            lr = base_lr * ((1.0 - (float(epoch) / float(total_epochs))) ** power)
+
+        elif lr_policy == "exponential_decay":
+            decay_rate = 0.97
+            lr = base_lr * (decay_rate ** (float(epoch) / float(total_epochs)))
+
+        elif lr_policy == "cosine":
+            # determine min_lr (if user didn’t set it, default to base_lr/10)
+            if getattr(args, "min_lr", None) is None:
+                min_lr = base_lr * 0.1
+            else:
+                min_lr = args.min_lr
+
+            denom = max_steps - warmup_steps
+            # make sure we don’t go negative if warmup_steps > current_step
+            t = max(0, current_step - warmup_steps)
+            cosine_decay = 0.5 * (1 + math.cos(math.pi * t / denom))
+            lr = min_lr + (base_lr - min_lr) * cosine_decay
+
+        else:
+            raise NotImplementedError(f"Unknown lr_policy: {lr_policy}")
+
+    # 5) log and set
+    if step % 100 == 0:
+        print(f"Epoch: {epoch} Step {step}\tLearning rate: {lr:.6g}")
+
+    for pg in optimizer.param_groups:
+        pg['lr'] = lr
+
+'''def adjust_learning_rate(optimizer, epoch, total_epochs, r, lr_policy, step, epoch_length):
     """ Adjusts learning rate based on stage, epoch, and policy.
 
     Gets learning rate for stage from runtime and adjusts based on policy.
@@ -581,7 +670,6 @@ def adjust_learning_rate(optimizer, epoch, total_epochs, r, lr_policy, step, epo
 
     if args.lr_warmup and epoch < 5:
         lr = stage_base_lr * float(1 + step + epoch*epoch_length)/(5.*epoch_length)
-
     else:
         if lr_policy == "step":
             lr = stage_base_lr * (0.1 ** (epoch // 30))
@@ -598,7 +686,7 @@ def adjust_learning_rate(optimizer, epoch, total_epochs, r, lr_policy, step, epo
         print("Epoch: %d Step %d \tLearning rate: %f" % (epoch, step, lr))
 
     for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
+        param_group['lr'] = lr'''
 
 def accuracy(output, target, topk=(1,)):
     """Computes the precision@k for language modeling by flattening batch and seq dimensions."""
@@ -622,23 +710,6 @@ def accuracy(output, target, topk=(1,)):
             correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
             res.append(correct_k.mul_(100.0 / (B * T)))
         return res
-
-'''def accuracy(output, target, topk=(1,)):
-    """Computes the precision@k for the specified values of k"""
-    with torch.no_grad():
-        maxk = max(topk)
-        batch_size = target.size(0)
-
-        _, pred = output.topk(maxk, 1, True, True)
-        pred = pred.t()
-        correct = pred.eq(target.view(1, -1).expand_as(pred))
-
-        res = []
-        for k in topk:
-            # correct_k = correct[:k].view(-1).float().sum(0, keepdim=True) changed
-            correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
-            res.append(correct_k.mul_(100.0 / batch_size))
-        return res'''
 
 
 if __name__ == '__main__':
